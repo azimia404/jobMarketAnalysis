@@ -4,30 +4,77 @@ import cors from "cors";
 import * as cheerio from "cheerio";
 
 const categories: Record<string, string[]> = {
-  "JavaScript": ["javascript", "js", "джс", "javascript"],
-  "TypeScript": ["typescript", "ts"],
-  "Python": ["python", "питон", "Python"],
-  "Java": ["java", "явa"],
-  "C#": ["c#", ".net", "дотнет"],
+  // Языки и технологии
+  "JavaScript": ["javascript", "js", "джс"],
+  "TypeScript": ["typescript", "ts", "тайпскрипт"],
+  "Python": ["python", "питон", "fast api", "django", "flask"],
+  "Java": ["java", "явa", "spring"],
+  "C#": ["c#", ".net", "дотнет", "blazor"],
+  "C++": ["c++", "cpp", "qt"],
   "Go": ["golang", "го"],
-  "PHP": ["php", "пи-аш-пи"],
-  "Ruby": ["ruby", "руби"],
-  "Kotlin": ["kotlin", "котлин"],
-  "Swift": ["swift", "свифт"],
-  "Node.js": ["node", "node.js", "ноде"],
-  "Frontend": ["frontend", "фронтенд"],
-  "Backend": ["backend", "бекенд", "бэкенд"],
-  "React": ["react", "реакт"],
+  "PHP": ["php", "laravel"],
+  "Ruby": ["ruby", "руби", "rails"],
+  "Kotlin": ["kotlin", "котлин", "android"],
+  "Swift": ["swift", "свифт", "ios", "macos"],
+  "Node.js": ["node", "node.js", "nodejs", "ноде"],
+  "Frontend": ["frontend", "front-end", "фронтенд"],
+  "Backend": ["backend", "бекенд", "бэкенд", "разработчик", "developer"],
+  "Fullstack": ["fullstack", "full stack", "full - stack", "full-stack"],
+  "React": ["react", "реакт", "react native"],
   "Vue": ["vue", "вью"],
   "Angular": ["angular", "ангуляр"],
   "Flutter": ["flutter", "флаттер"],
-  "SQL": ["sql", "sql"],
-  "Data Analyst": ["аналитик", "analyst", "data engineer"],
-  "Designer": ["ui/ux", "ui", "ux", "designer", "дизайнер"],
-  "Product Manager": ["product manager", "manager", "project manager"],
-  "Marketing": ["marketing", "маркетинг"],
-  "HR": ["hr"],
+  "SQL / Database": ["sql", "mysql", "postgresql", "data engineer", "database"],
+  "DevOps": ["devops", "sre", "aws", "gcp", "docker", "kubernetes", "ci/cd"],
+  "QA": ["qa", "tester", "test", "manual", "automation", "cypress", "selenium"],
+  "Data Science / ML": ["data scientist", "machine learning", "ml", "ai", "аналитик", "аналитика", "data engineer", "data analyst"],
+  "iOS": ["ios", "macos", "swift"],
+  "Android": ["android", "kotlin"],
+  "Unity": ["unity"],
+  "1C": ["1c", "1с"],
+
+  // Управленческие / непрофильные позиции
+  "Project Manager / Product Manager": ["project manager", "pm", "scrum master", "agile", "product manager", "продакт менеджер", "проектный менеджер"],
+  "HR / Recruiter": ["hr", "human resources", "recruiter", "it-рекрутер", "it recruiter", "кадровик"],
+  "Business Analyst": ["business analyst", "ba", "аналитик бизнеса", "бизнес-аналитик"],
+  "Marketing / SMM": ["marketing", "smm", "digital маркетолог", "маркетолог"],
+  "Design / UIUX": ["designer", "ui/ux", "graphic designer", "web designer", "дизайнер", "ui/ux-дизайнер"],
+  "Finance / Accounting": ["бухгалтер", "finance", "accountant", "зарплата", "payroll"],
+  "Legal / Lawyer": ["юрист", "lawyer", "legal"]
 };
+
+
+async function fetchAllJobs() {
+  const allTitles: string[] = [];
+  let page = 1;
+  let hasMorePages = true;
+
+  while (hasMorePages) {
+    const url = `https://devkg.com/ru/jobs?page=${page}`;
+    console.log(`Fetching ${url}`);
+
+    const response = await axios.get(url);
+    const html = response.data;
+    const $ = cheerio.load(html);
+
+    // Проверяем наличие архива
+    if ($("a.link.archived").length > 0) {
+      console.log("Found archived link — stopping iteration.");
+      break;
+    }
+
+    // Собираем все вакансии на странице
+    $("div.jobs-item-field.position").each((_, el) => {
+      const title = $(el).text().trim();
+      if (title) allTitles.push(title);
+    });
+
+    page += 1; // переход к следующей странице
+  }
+
+  return allTitles;
+}
+
 
 const app = express();
 const PORT = 5000;
@@ -38,17 +85,9 @@ app.get("/jobs", async (req, res) => {
   try {
     const response = await axios.get("https://devkg.com/ru/jobs");
     const html = response.data;
-    
-    // Load HTML into Cheerio
-    const $ = cheerio.load(html);
 
     // Select all divs with class "jobs-item-field position"
-    const titles: string[] = [];
-    $("div.jobs-item-field.position").each((_, el) => {
-      const title = $(el).text().trim();
-      if (title) titles.push(title);
-      console.dir(title);
-    });
+    const titles: string[] = await fetchAllJobs();
 
     const counts: Record<string, number> = {};
     const countsTitles: Record<string, string[]> = {};
