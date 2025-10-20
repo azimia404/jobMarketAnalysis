@@ -5,7 +5,8 @@ import './App.css'
 
 function App() {
   const [count, setCount] = useState(0)
-
+  const p = fetch("https://devkg.com/ru/jobs").then(e => e.json);
+  console.dir(p);
   return (
     <>
       <div>
