@@ -2,6 +2,8 @@ import express from "express";
 import axios from "axios";
 import cors from "cors";
 import * as cheerio from "cheerio";
+import fs from "fs";
+import path from "path";
 
 const categories: Record<string, string[]> = {
   // Языки и технологии
@@ -43,6 +45,9 @@ const categories: Record<string, string[]> = {
   "Legal / Lawyer": ["юрист", "lawyer", "legal"]
 };
 
+const cachePath = path.join(process.cwd(), "cache.json");
+
+
 
 async function fetchAllJobs() {
   const allTitles: string[] = [];
@@ -76,55 +81,85 @@ async function fetchAllJobs() {
 }
 
 
+
+// время жизни кэша (например, 1 час)
+const CACHE_TTL = 60 * 60 * 1000;
+let memoryCache: { data: any; timestamp: number } | null = null;
+
 const app = express();
 const PORT = 5000;
+let cache: Record<string, number>;
 
 app.use(cors());
 
 app.get("/jobs", async (req, res) => {
   try {
+    // 🔹 1. Проверяем кэш в памяти
+    if (memoryCache && Date.now() - memoryCache.timestamp < CACHE_TTL) {
+      console.log("✅ Using in-memory cache");
+      return res.json(memoryCache.data);
+    }
+
+    // 🔹 2. Проверяем кэш на диске
+    if (fs.existsSync(cachePath)) {
+      const cache = JSON.parse(fs.readFileSync(cachePath, "utf-8"));
+      if (Date.now() - cache.timestamp < CACHE_TTL) {
+        console.log("✅ Using cached data from file");
+        memoryCache = { data: cache.data, timestamp: cache.timestamp };
+        return res.json(cache.data);
+      }
+    }
+
+    // 🔹 3. Если кэша нет — парсим свежие данные
+    console.log("🔄 Fetching fresh data...");
+
     const response = await axios.get("https://devkg.com/ru/jobs");
     const html = response.data;
 
-    // Select all divs with class "jobs-item-field position"
-    const titles: string[] = await fetchAllJobs();
+    const titles: string[] = await fetchAllJobs(); // твоя функция парсинга
 
     const counts: Record<string, number> = {};
     const countsTitles: Record<string, string[]> = {};
-    Object.keys(categories).forEach(cat => counts[cat] = 0);
+    Object.keys(categories).forEach(cat => {
+      counts[cat] = 0;
+      countsTitles[cat] = [];
+    });
     counts["Other"] = 0;
-    Object.keys(categories).forEach(cat => countsTitles[cat] = []);
     countsTitles["Other"] = [];
 
     for (const title of titles) {
-        const lowerTitle = title
-            .toLowerCase()                  // нижний регистр
-            .replace(/\n/g, " ")            // убрать переносы
-            .replace(/\s+/g, " ")           // убрать лишние пробелы
-            .trim();
-            
-        let matched = false;
-        for (const [category, keywords] of Object.entries(categories)) {
-            if (keywords.some(keyword => lowerTitle.includes(keyword))) {
-                if (counts[category] != undefined) {
-                    counts[category] += 1;
-                    countsTitles[category]?.push(title);
-                    matched = true;
-                    break;
-                }
-            }
+      const lowerTitle = title
+        .toLowerCase()
+        .replace(/\n/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      let matched = false;
+      for (const [category, keywords] of Object.entries(categories)) {
+        if (keywords.some(keyword => lowerTitle.includes(keyword))) {
+          counts[category] = (counts[category] ?? 0) + 1;
+          countsTitles[category]?.push(title);
+          matched = true;
+          break;
         }
-        if(!matched) {
-            counts["Other"] += 1;
-            countsTitles["Other"]?.push(title);
-        }
+      }
+
+      if (!matched) {
+        counts["Other"]++;
+        countsTitles["Other"].push(title);
+      }
     }
 
-    console.dir(countsTitles);
-    // Send JSON to frontend
-    res.json({ counts });
+    // 🔹 4. Сохраняем кэш
+    const cacheData = { timestamp: Date.now(), data: counts  };
+    fs.writeFileSync(cachePath, JSON.stringify(cacheData, null, 2));
+    memoryCache = cacheData;
+
+    console.log("💾 Cached new data to file");
+    res.json(cacheData.data);
+
   } catch (err) {
-    console.error(err);
+    console.error("❌ Failed to fetch jobs:", err);
     res.status(500).json({ error: "Failed to fetch jobs" });
   }
 });
